@@ -1,0 +1,195 @@
+-- WordDisplay v3 — loads answers from GitHub, auto-copy + auto-type toggles
+local ANSWERS_URL = "https://raw.githubusercontent.com/101-svg/tzproject/main/answers.json"
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local HttpService       = game:GetService("HttpService")
+local CoreGui           = game:GetService("CoreGui")
+
+local autoCopy = true
+local autoType = false
+
+local function copy(text)
+    if setclipboard then        setclipboard(text)
+    elseif toclipboard then     toclipboard(text)
+    elseif Clipboard and Clipboard.set then Clipboard.set(text)
+    end
+end
+
+-- direct server call — bypasses UI entirely
+local function typeAnswer(answer)
+    local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+    if not remotes then warn("WordDisplay: no Remotes folder") return end
+
+    local submitRemote = remotes:FindFirstChild("SubmitAnswerRemote")
+    if not submitRemote then warn("WordDisplay: no SubmitAnswerRemote") return end
+
+    -- signal intent first (tells server player is typing)
+    local intentRemote = remotes:FindFirstChild("SignalIntentType")
+    if intentRemote then pcall(function() intentRemote:FireServer() end) end
+
+    -- game enforces a 2.1s cooldown from round start before accepting answers
+    task.wait(2.2)
+
+    local ok, result = pcall(function()
+        return submitRemote:InvokeServer(string.lower(answer))
+    end)
+
+    if ok then
+        print("WordDisplay: submitted → " .. answer .. " | result: " .. tostring(result))
+    else
+        warn("WordDisplay: submit failed — " .. tostring(result))
+    end
+end
+
+local ANSWERS = {}
+
+local function loadAnswers()
+    local reqFunc = request or (syn and syn.request) or (http and http.request)
+    if not reqFunc then warn("WordDisplay: no HTTP function available") return false end
+    local ok, res = pcall(reqFunc, { Url = ANSWERS_URL, Method = "GET" })
+    if ok and res and res.StatusCode == 200 then
+        pcall(function() ANSWERS = HttpService:JSONDecode(res.Body) end)
+        local count = 0
+        for _ in pairs(ANSWERS) do count += 1 end
+        print("WordDisplay: " .. count .. " answers loaded ✓")
+        return true
+    else
+        warn("WordDisplay: HTTP " .. tostring(res and res.StatusCode))
+        return false
+    end
+end
+
+local roundFolder  = ReplicatedStorage:WaitForChild("RoundControlFolder", 30)
+if not roundFolder then warn("WordDisplay: no RoundControlFolder") return end
+local topicControl = roundFolder:WaitForChild("TopicControl", 30)
+if not topicControl then warn("WordDisplay: no TopicControl") return end
+local topicDesc    = topicControl:WaitForChild("TopicDesc", 30)
+if not topicDesc then warn("WordDisplay: no TopicDesc") return end
+local topicDiff    = topicControl:FindFirstChild("TopicDiff")
+
+local old = CoreGui:FindFirstChild("WordDisplay")
+if old then old:Destroy() end
+
+local gui = Instance.new("ScreenGui")
+gui.Name, gui.ResetOnSpawn, gui.ZIndexBehavior = "WordDisplay", false, Enum.ZIndexBehavior.Sibling
+gui.Parent = CoreGui
+
+local frame = Instance.new("Frame")
+frame.Size                   = UDim2.new(0, 270, 0, 116)
+frame.Position               = UDim2.new(0.5, -135, 0, 20)
+frame.BackgroundColor3       = Color3.fromRGB(18, 18, 18)
+frame.BackgroundTransparency = 0.1
+frame.BorderSizePixel        = 0
+frame.Active, frame.Draggable = true, true
+frame.Parent = gui
+Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 10)
+
+local header = Instance.new("TextLabel")
+header.Size, header.Position  = UDim2.new(1,-12,0,18), UDim2.new(0,6,0,4)
+header.BackgroundTransparency = 1
+header.TextColor3             = Color3.fromRGB(100,220,100)
+header.TextSize, header.Font  = 11, Enum.Font.GothamBold
+header.TextXAlignment         = Enum.TextXAlignment.Left
+header.Text                   = "● Loading answers from GitHub..."
+header.Parent = frame
+
+local wordLabel = Instance.new("TextLabel")
+wordLabel.Size, wordLabel.Position  = UDim2.new(1,-12,0,30), UDim2.new(0,6,0,22)
+wordLabel.BackgroundTransparency    = 1
+wordLabel.TextColor3                = Color3.fromRGB(180,180,180)
+wordLabel.TextSize, wordLabel.Font  = 22, Enum.Font.GothamBold
+wordLabel.TextXAlignment            = Enum.TextXAlignment.Left
+wordLabel.TextTruncate              = Enum.TextTruncate.AtEnd
+wordLabel.Text                      = "—"
+wordLabel.Parent = frame
+
+local clueLabel = Instance.new("TextLabel")
+clueLabel.Size, clueLabel.Position  = UDim2.new(1,-12,0,13), UDim2.new(0,6,0,54)
+clueLabel.BackgroundTransparency    = 1
+clueLabel.TextColor3                = Color3.fromRGB(100,100,100)
+clueLabel.TextSize, clueLabel.Font  = 10, Enum.Font.Gotham
+clueLabel.TextXAlignment            = Enum.TextXAlignment.Left
+clueLabel.TextTruncate              = Enum.TextTruncate.AtEnd
+clueLabel.Text                      = ""
+clueLabel.Parent = frame
+
+local function makeBtn(text, posX, isOn)
+    local btn = Instance.new("TextButton")
+    btn.Size             = UDim2.new(0, 126, 0, 26)
+    btn.Position         = UDim2.new(0, posX, 0, 84)
+    btn.BackgroundColor3 = isOn and Color3.fromRGB(34,130,34) or Color3.fromRGB(100,30,30)
+    btn.TextColor3       = Color3.fromRGB(255,255,255)
+    btn.TextSize         = 11
+    btn.Font             = Enum.Font.GothamBold
+    btn.Text             = text
+    btn.BorderSizePixel  = 0
+    btn.Parent           = frame
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+    return btn
+end
+
+local copyBtn = makeBtn("📋 Auto Copy: ON",  6,   true)
+local typeBtn = makeBtn("⌨️  Auto Type: OFF", 138, false)
+
+copyBtn.MouseButton1Click:Connect(function()
+    autoCopy = not autoCopy
+    copyBtn.Text             = autoCopy and "📋 Auto Copy: ON" or "📋 Auto Copy: OFF"
+    copyBtn.BackgroundColor3 = autoCopy and Color3.fromRGB(34,130,34) or Color3.fromRGB(100,30,30)
+end)
+
+typeBtn.MouseButton1Click:Connect(function()
+    autoType = not autoType
+    typeBtn.Text             = autoType and "⌨️  Auto Type: ON" or "⌨️  Auto Type: OFF"
+    typeBtn.BackgroundColor3 = autoType and Color3.fromRGB(34,130,34) or Color3.fromRGB(100,30,30)
+end)
+
+local function onNewClue(clue)
+    if clue == "" then
+        wordLabel.Text       = "—"
+        wordLabel.TextColor3 = Color3.fromRGB(180,180,180)
+        clueLabel.Text       = ""
+        header.Text          = "● LIVE — waiting for round..."
+        header.TextColor3    = Color3.fromRGB(100,220,100)
+        return
+    end
+
+    local answer = ANSWERS[clue]
+    local diff   = topicDiff and topicDiff.Value or ""
+    local tag    = diff ~= "" and ("[" .. diff .. "] ") or ""
+
+    clueLabel.Text = clue
+
+    if answer then
+        wordLabel.Text       = answer
+        wordLabel.TextColor3 = Color3.fromRGB(255,255,255)
+        if autoCopy then copy(answer) end
+        if autoType then task.spawn(function() typeAnswer(answer) end) end
+        header.Text       = "● " .. tag .. (autoCopy and "COPIED ✓" or "ANSWER FOUND")
+        header.TextColor3 = Color3.fromRGB(255,220,50)
+        task.delay(3, function()
+            if gui.Parent then
+                header.Text      = "● LIVE"
+                header.TextColor3 = Color3.fromRGB(100,220,100)
+            end
+        end)
+        print("WordDisplay: [" .. diff .. "] " .. answer)
+    else
+        wordLabel.Text       = "? Not found"
+        wordLabel.TextColor3 = Color3.fromRGB(255,140,40)
+        header.Text          = "● " .. tag .. "unknown — add it to GitHub!"
+        header.TextColor3    = Color3.fromRGB(255,80,80)
+        warn("WordDisplay MISSING: " .. clue)
+    end
+end
+
+task.spawn(function()
+    local ok = loadAnswers()
+    header.Text      = ok and "● LIVE — waiting for round..." or "● FAILED — bad URL?"
+    header.TextColor3 = ok and Color3.fromRGB(100,220,100) or Color3.fromRGB(255,80,80)
+    if topicDesc.Value ~= "" then onNewClue(topicDesc.Value) end
+    topicDesc:GetPropertyChangedSignal("Value"):Connect(function()
+        onNewClue(topicDesc.Value)
+    end)
+end)
+
+print("WordDisplay v3 loaded")
