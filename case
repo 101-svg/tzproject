@@ -1,0 +1,553 @@
+local RS         = game:GetService("ReplicatedStorage")
+local Players    = game:GetService("Players")
+local CoreGui    = game:GetService("CoreGui")
+local RunService = game:GetService("RunService")
+
+local player     = Players.LocalPlayer
+local openCase   = RS:WaitForChild("Remotes"):WaitForChild("OpenCase")
+local sellRemote = RS:WaitForChild("Remotes"):WaitForChild("Sell")
+
+-- ============================================================
+-- SETTINGS
+-- ============================================================
+local ITEM_VALUES = {
+    ["Glock18_Shinobu"]    = { ["Field-Tested"]   = 5.12  },
+    ["SAWEDOFF_KissLove"]  = { ["Battle-Scarred"] = 1.87  },
+    ["AWP_PAW"]            = { ["Field-Tested"]   = 1.31  },
+    ["M4A1S_EmphorosaurS"] = { ["Minimal Wear"]   = 0.79  },
+    ["P90_WaveBreaker"]    = { ["Minimal Wear"]   = 0.73  },
+    ["GALIL_Connexion"]    = { ["Minimal Wear"]   = 0.57  },
+    ["UMP45_Moonrise"]     = { ["Field-Tested"]   = 0.32  },
+    ["M4A4_SteelWork"]     = { ["Minimal Wear"]   = 0.33  },
+    ["SG553_Cyberforce"]   = { ["Factory New"]    = 0.24  },
+    ["MP9_BuffBlue"]       = { ["Minimal Wear"]   = 0.16  },
+}
+local KEEP_THRESHOLD = 0.55
+local COOLDOWN       = 6.0
+local BATCH_SIZE     = 5
+
+local CHECKPOINTS = {
+    {name="1",      pos=Vector3.new(30.73,  60.61, 107.98)},
+    {name="2",      pos=Vector3.new(46.85,  16.05, 105.98)},
+    {name="3",      pos=Vector3.new(66.69,  16.05,  99.63)},
+    {name="4",      pos=Vector3.new(30.80,  17.40, 109.20)},
+    {name="5",      pos=Vector3.new(59.21,  28.82, 106.87)},
+    {name="6",      pos=Vector3.new(43.52,  34.32, 115.96)},
+    {name="7",      pos=Vector3.new(11.28,  43.73, 117.13)},
+    {name="8",      pos=Vector3.new(12.85,  68.85, 117.44)},
+    {name="9",      pos=Vector3.new(6.30,   59.21,  93.71)},
+    {name="10",     pos=Vector3.new(6.39,   63.69, 101.26)},
+    {name="11",     pos=Vector3.new(-1.80,  64.27, 108.91)},
+    {name="12",     pos=Vector3.new(2.80,   65.54, 115.12)},
+    {name="13",     pos=Vector3.new(19.81,  69.79, 123.29)},
+    {name="14",     pos=Vector3.new(32.64,  72.34, 118.57)},
+    {name="Finish", pos=Vector3.new(40.63,  73.86, 117.78)},
+}
+local STEP_DELAY = 0.3
+local LOOP_DELAY = 5
+
+-- ============================================================
+-- UI
+-- ============================================================
+local old = CoreGui:FindFirstChild("FarmAll")
+if old then old:Destroy() end
+
+local gui = Instance.new("ScreenGui")
+gui.Name, gui.ResetOnSpawn, gui.ZIndexBehavior = "FarmAll", false, Enum.ZIndexBehavior.Sibling
+gui.Parent = CoreGui
+
+-- CASE FARMER WINDOW
+local caseFrame = Instance.new("Frame")
+caseFrame.Size                   = UDim2.new(0, 290, 0, 430)
+caseFrame.Position               = UDim2.new(0, 16, 0.5, -215)
+caseFrame.BackgroundColor3       = Color3.fromRGB(10,10,10)
+caseFrame.BackgroundTransparency = 0.05
+caseFrame.BorderSizePixel        = 0
+caseFrame.Active, caseFrame.Draggable = true, true
+caseFrame.Parent = gui
+Instance.new("UICorner", caseFrame).CornerRadius = UDim.new(0,10)
+
+local title = Instance.new("TextLabel")
+title.Size, title.Position   = UDim2.new(1,-10,0,20), UDim2.new(0,5,0,5)
+title.BackgroundTransparency = 1
+title.TextColor3             = Color3.fromRGB(100,220,100)
+title.TextSize, title.Font   = 12, Enum.Font.GothamBold
+title.Text                   = "* Group Case Farmer"
+title.TextXAlignment         = Enum.TextXAlignment.Left
+title.Parent                 = caseFrame
+
+local balLabel = Instance.new("TextLabel")
+balLabel.Size, balLabel.Position = UDim2.new(0.55,0,0,14), UDim2.new(0,5,0,27)
+balLabel.BackgroundTransparency  = 1
+balLabel.TextColor3              = Color3.fromRGB(80,200,80)
+balLabel.TextSize, balLabel.Font = 11, Enum.Font.GothamBold
+balLabel.Text                    = "Balance: $0.00"
+balLabel.TextXAlignment          = Enum.TextXAlignment.Left
+balLabel.Parent                  = caseFrame
+
+local statsLabel = Instance.new("TextLabel")
+statsLabel.Size, statsLabel.Position = UDim2.new(0.44,0,0,14), UDim2.new(0.56,0,0,27)
+statsLabel.BackgroundTransparency    = 1
+statsLabel.TextColor3                = Color3.fromRGB(100,100,100)
+statsLabel.TextSize, statsLabel.Font = 10, Enum.Font.Gotham
+statsLabel.Text                      = "0 opened | 0 kept"
+statsLabel.TextXAlignment            = Enum.TextXAlignment.Right
+statsLabel.Parent                    = caseFrame
+
+local cdBg = Instance.new("Frame")
+cdBg.Size, cdBg.Position = UDim2.new(1,-12,0,8), UDim2.new(0,6,0,44)
+cdBg.BackgroundColor3    = Color3.fromRGB(30,30,30)
+cdBg.BorderSizePixel     = 0
+cdBg.Parent              = caseFrame
+Instance.new("UICorner", cdBg).CornerRadius = UDim.new(0,4)
+
+local cdBar = Instance.new("Frame")
+cdBar.Size             = UDim2.new(0,0,1,0)
+cdBar.BackgroundColor3 = Color3.fromRGB(60,200,60)
+cdBar.BorderSizePixel  = 0
+cdBar.Parent           = cdBg
+Instance.new("UICorner", cdBar).CornerRadius = UDim.new(0,4)
+
+local cdLabel = Instance.new("TextLabel")
+cdLabel.Size, cdLabel.Position = UDim2.new(1,-12,0,13), UDim2.new(0,6,0,55)
+cdLabel.BackgroundTransparency = 1
+cdLabel.TextColor3             = Color3.fromRGB(70,70,70)
+cdLabel.TextSize, cdLabel.Font = 10, Enum.Font.Gotham
+cdLabel.Text                   = "ready"
+cdLabel.TextXAlignment         = Enum.TextXAlignment.Left
+cdLabel.Parent                 = caseFrame
+
+local startBtn = Instance.new("TextButton")
+startBtn.Size             = UDim2.new(1,-12,0,32)
+startBtn.Position         = UDim2.new(0,6,0,72)
+startBtn.BackgroundColor3 = Color3.fromRGB(30,130,30)
+startBtn.TextColor3       = Color3.fromRGB(255,255,255)
+startBtn.TextSize         = 13
+startBtn.Font             = Enum.Font.GothamBold
+startBtn.Text             = "> START FARMING"
+startBtn.BorderSizePixel  = 0
+startBtn.Parent           = caseFrame
+Instance.new("UICorner", startBtn).CornerRadius = UDim.new(0,6)
+
+local sellBtn = Instance.new("TextButton")
+sellBtn.Size             = UDim2.new(1,-12,0,26)
+sellBtn.Position         = UDim2.new(0,6,0,108)
+sellBtn.BackgroundColor3 = Color3.fromRGB(100,50,10)
+sellBtn.TextColor3       = Color3.fromRGB(255,255,255)
+sellBtn.TextSize         = 11
+sellBtn.Font             = Enum.Font.GothamBold
+sellBtn.Text             = "[Sell] Sell all trash in bank now"
+sellBtn.BorderSizePixel  = 0
+sellBtn.Parent           = caseFrame
+Instance.new("UICorner", sellBtn).CornerRadius = UDim.new(0,6)
+
+local keepHdr = Instance.new("TextLabel")
+keepHdr.Size, keepHdr.Position = UDim2.new(1,-10,0,13), UDim2.new(0,5,0,138)
+keepHdr.BackgroundTransparency = 1
+keepHdr.TextColor3             = Color3.fromRGB(55,55,55)
+keepHdr.TextSize, keepHdr.Font = 10, Enum.Font.GothamBold
+keepHdr.Text                   = "KEPT ITEMS"
+keepHdr.TextXAlignment         = Enum.TextXAlignment.Left
+keepHdr.Parent                 = caseFrame
+
+local keepScroll = Instance.new("ScrollingFrame")
+keepScroll.Size                   = UDim2.new(1,-10,0,100)
+keepScroll.Position               = UDim2.new(0,5,0,153)
+keepScroll.BackgroundTransparency = 1
+keepScroll.BorderSizePixel        = 0
+keepScroll.ScrollBarThickness     = 3
+keepScroll.ScrollBarImageColor3   = Color3.fromRGB(55,55,55)
+keepScroll.Parent                 = caseFrame
+Instance.new("UIListLayout", keepScroll).Padding = UDim.new(0,1)
+
+local logHdr = Instance.new("TextLabel")
+logHdr.Size, logHdr.Position = UDim2.new(1,-10,0,13), UDim2.new(0,5,0,257)
+logHdr.BackgroundTransparency = 1
+logHdr.TextColor3             = Color3.fromRGB(55,55,55)
+logHdr.TextSize, logHdr.Font  = 10, Enum.Font.GothamBold
+logHdr.Text                   = "LOG"
+logHdr.TextXAlignment         = Enum.TextXAlignment.Left
+logHdr.Parent                 = caseFrame
+
+local logScroll = Instance.new("ScrollingFrame")
+logScroll.Size                   = UDim2.new(1,-10,0,160)
+logScroll.Position               = UDim2.new(0,5,0,272)
+logScroll.BackgroundTransparency = 1
+logScroll.BorderSizePixel        = 0
+logScroll.ScrollBarThickness     = 3
+logScroll.ScrollBarImageColor3   = Color3.fromRGB(55,55,55)
+logScroll.Parent                 = caseFrame
+Instance.new("UIListLayout", logScroll).Padding = UDim.new(0,1)
+
+-- OBBY WINDOW
+local obbyFrame = Instance.new("Frame")
+obbyFrame.Size                   = UDim2.new(0, 240, 0, 220)
+obbyFrame.Position               = UDim2.new(0, 316, 0.5, -110)
+obbyFrame.BackgroundColor3       = Color3.fromRGB(10,10,10)
+obbyFrame.BackgroundTransparency = 0.05
+obbyFrame.BorderSizePixel        = 0
+obbyFrame.Active, obbyFrame.Draggable = true, true
+obbyFrame.Parent = gui
+Instance.new("UICorner", obbyFrame).CornerRadius = UDim.new(0,10)
+
+local obbyTitle = Instance.new("TextLabel")
+obbyTitle.Size, obbyTitle.Position   = UDim2.new(1,-10,0,20), UDim2.new(0,5,0,5)
+obbyTitle.BackgroundTransparency = 1
+obbyTitle.TextColor3             = Color3.fromRGB(100,220,100)
+obbyTitle.TextSize, obbyTitle.Font = 12, Enum.Font.GothamBold
+obbyTitle.Text                   = "* Obby Auto-Completer"
+obbyTitle.TextXAlignment         = Enum.TextXAlignment.Left
+obbyTitle.Parent                 = obbyFrame
+
+local statusLabel = Instance.new("TextLabel")
+statusLabel.Size, statusLabel.Position = UDim2.new(1,-10,0,16), UDim2.new(0,5,0,27)
+statusLabel.BackgroundTransparency     = 1
+statusLabel.TextColor3                 = Color3.fromRGB(80,80,80)
+statusLabel.TextSize, statusLabel.Font = 10, Enum.Font.Gotham
+statusLabel.Text                       = "press START to begin"
+statusLabel.TextXAlignment             = Enum.TextXAlignment.Left
+statusLabel.Parent                     = obbyFrame
+
+local earnLabel = Instance.new("TextLabel")
+earnLabel.Size, earnLabel.Position = UDim2.new(1,-10,0,16), UDim2.new(0,5,0,45)
+earnLabel.BackgroundTransparency   = 1
+earnLabel.TextColor3               = Color3.fromRGB(80,200,80)
+earnLabel.TextSize, earnLabel.Font = 11, Enum.Font.GothamBold
+earnLabel.Text                     = "Total earned: $0"
+earnLabel.TextXAlignment           = Enum.TextXAlignment.Left
+earnLabel.Parent                   = obbyFrame
+
+local barBg = Instance.new("Frame")
+barBg.Size, barBg.Position = UDim2.new(1,-12,0,10), UDim2.new(0,6,0,65)
+barBg.BackgroundColor3     = Color3.fromRGB(25,25,25)
+barBg.BorderSizePixel      = 0
+barBg.Parent               = obbyFrame
+Instance.new("UICorner", barBg).CornerRadius = UDim.new(0,4)
+
+local bar = Instance.new("Frame")
+bar.Size             = UDim2.new(0,0,1,0)
+bar.BackgroundColor3 = Color3.fromRGB(50,200,50)
+bar.BorderSizePixel  = 0
+bar.Parent           = barBg
+Instance.new("UICorner", bar).CornerRadius = UDim.new(0,4)
+
+local checkLabel = Instance.new("TextLabel")
+checkLabel.Size, checkLabel.Position = UDim2.new(1,-10,0,14), UDim2.new(0,5,0,78)
+checkLabel.BackgroundTransparency    = 1
+checkLabel.TextColor3                = Color3.fromRGB(60,60,60)
+checkLabel.TextSize, checkLabel.Font = 10, Enum.Font.Gotham
+checkLabel.Text                      = "checkpoint 0 / 15"
+checkLabel.TextXAlignment            = Enum.TextXAlignment.Left
+checkLabel.Parent                    = obbyFrame
+
+local obbyStartBtn = Instance.new("TextButton")
+obbyStartBtn.Size             = UDim2.new(1,-12,0,30)
+obbyStartBtn.Position         = UDim2.new(0,6,0,97)
+obbyStartBtn.BackgroundColor3 = Color3.fromRGB(30,130,30)
+obbyStartBtn.TextColor3       = Color3.fromRGB(255,255,255)
+obbyStartBtn.TextSize         = 13
+obbyStartBtn.Font             = Enum.Font.GothamBold
+obbyStartBtn.Text             = "> START"
+obbyStartBtn.BorderSizePixel  = 0
+obbyStartBtn.Parent           = obbyFrame
+Instance.new("UICorner", obbyStartBtn).CornerRadius = UDim.new(0,6)
+
+local obbyLogScroll = Instance.new("ScrollingFrame")
+obbyLogScroll.Size                   = UDim2.new(1,-10,0,75)
+obbyLogScroll.Position               = UDim2.new(0,5,0,133)
+obbyLogScroll.BackgroundTransparency = 1
+obbyLogScroll.BorderSizePixel        = 0
+obbyLogScroll.ScrollBarThickness     = 3
+obbyLogScroll.ScrollBarImageColor3   = Color3.fromRGB(55,55,55)
+obbyLogScroll.Parent                 = obbyFrame
+Instance.new("UIListLayout", obbyLogScroll).Padding = UDim.new(0,1)
+
+-- ============================================================
+-- HELPERS
+-- ============================================================
+local function log(text, color)
+    local kids = logScroll:GetChildren()
+    if #kids > 82 then
+        for i = 1, #kids-80 do
+            if kids[i]:IsA("TextLabel") then kids[i]:Destroy() end
+        end
+    end
+    local lbl = Instance.new("TextLabel")
+    lbl.Size, lbl.BackgroundTransparency = UDim2.new(1,-4,0,14), 1
+    lbl.TextColor3             = color or Color3.fromRGB(170,170,170)
+    lbl.TextSize, lbl.Font     = 10, Enum.Font.Gotham
+    lbl.TextXAlignment         = Enum.TextXAlignment.Left
+    lbl.TextTruncate           = Enum.TextTruncate.AtEnd
+    lbl.Text                   = os.date("%H:%M:%S") .. " " .. text
+    lbl.Parent                 = logScroll
+    logScroll.CanvasSize       = UDim2.new(0,0,0, #logScroll:GetChildren()*15)
+    logScroll.CanvasPosition   = Vector2.new(0, math.huge)
+end
+
+local function obbyLog(text, color)
+    local lbl = Instance.new("TextLabel")
+    lbl.Size, lbl.BackgroundTransparency = UDim2.new(1,-4,0,13), 1
+    lbl.TextColor3             = color or Color3.fromRGB(170,170,170)
+    lbl.TextSize, lbl.Font     = 10, Enum.Font.Gotham
+    lbl.TextXAlignment         = Enum.TextXAlignment.Left
+    lbl.TextTruncate           = Enum.TextTruncate.AtEnd
+    lbl.Text                   = os.date("%H:%M:%S") .. " " .. text
+    lbl.Parent                 = obbyLogScroll
+    obbyLogScroll.CanvasSize   = UDim2.new(0,0,0, #obbyLogScroll:GetChildren()*14)
+    obbyLogScroll.CanvasPosition = Vector2.new(0, math.huge)
+end
+
+local function addKeepRow(itemId, wear, val)
+    local lbl = Instance.new("TextLabel")
+    lbl.Size, lbl.BackgroundTransparency = UDim2.new(1,-4,0,16), 1
+    lbl.TextColor3             = val >= 1.5 and Color3.fromRGB(255,215,0) or Color3.fromRGB(100,255,100)
+    lbl.TextSize, lbl.Font     = 10, Enum.Font.GothamBold
+    lbl.TextXAlignment         = Enum.TextXAlignment.Left
+    lbl.Text                   = string.format("[+] %s (%s) $%.2f", itemId, wear, val)
+    lbl.Parent                 = keepScroll
+    keepScroll.CanvasSize      = UDim2.new(0,0,0, #keepScroll:GetChildren()*17)
+    keepScroll.CanvasPosition  = Vector2.new(0, math.huge)
+end
+
+local function getBalance()
+    local ok, v = pcall(function() return player.PlayerData.Currencies.Balance.Value end)
+    return ok and v or 0
+end
+
+local function updateBalance()
+    balLabel.Text = string.format("Balance: $%.2f", getBalance())
+end
+
+local function getItemValue(itemId, wear)
+    local entry = ITEM_VALUES[itemId]
+    return entry and (entry[wear] or 0) or 0
+end
+
+local function getBankSnapshot()
+    local snap = {}
+    local bank = player.PlayerData:FindFirstChild("Bank")
+    if not bank then return snap end
+    for _, item in ipairs(bank:GetChildren()) do
+        local uuid = item:GetAttribute("UUID")
+        if uuid then snap[uuid] = true end
+    end
+    return snap
+end
+
+local function getNewItems(snapshot)
+    local new = {}
+    local bank = player.PlayerData:FindFirstChild("Bank")
+    if not bank then return new end
+    for _, item in ipairs(bank:GetChildren()) do
+        local uuid = item:GetAttribute("UUID")
+        if uuid and not snapshot[uuid] then
+            table.insert(new, {
+                Name     = item.Name,
+                Wear     = item:GetAttribute("Wear") or "",
+                Stattrak = item:GetAttribute("Stattrak") == true,
+                Age      = item:GetAttribute("TimeObtained") or 0,
+                UUID     = uuid,
+            })
+        end
+    end
+    return new
+end
+
+-- FIXED sell format: Name (not ItemId), matches confirmed working script
+local function sellItems(items)
+    if #items == 0 then return 0 end
+    local payload = {}
+    for _, item in ipairs(items) do
+        table.insert(payload, {
+            Name     = item.Name,
+            Wear     = item.Wear,
+            Stattrak = item.Stattrak,
+            Age      = item.Age,
+            UUID     = item.UUID,
+        })
+    end
+    local ok, result = pcall(function()
+        return sellRemote:InvokeServer(payload)
+    end)
+    return (ok and result ~= nil) and #items or 0
+end
+
+-- ============================================================
+-- SELL ALL TRASH
+-- ============================================================
+local function sellAllTrash()
+    local bank = player.PlayerData:FindFirstChild("Bank")
+    if not bank then log("No bank found") return end
+    local toSell = {}
+    for _, item in ipairs(bank:GetChildren()) do
+        if not item:GetAttribute("Escrow") and not item:GetAttribute("Locked") then
+            local val = getItemValue(item.Name, item:GetAttribute("Wear") or "")
+            if val < KEEP_THRESHOLD then
+                table.insert(toSell, {
+                    Name     = item.Name,
+                    Wear     = item:GetAttribute("Wear") or "",
+                    Stattrak = item:GetAttribute("Stattrak") == true,
+                    Age      = item:GetAttribute("TimeObtained") or 0,
+                    UUID     = item:GetAttribute("UUID"),
+                })
+            end
+        end
+    end
+    if #toSell == 0 then log("Nothing to sell", Color3.fromRGB(150,150,150)) return end
+    local sold = sellItems(toSell)
+    log("Sold " .. sold .. " trash items", Color3.fromRGB(200,200,80))
+    updateBalance()
+end
+
+-- ============================================================
+-- CASE FARM LOOP
+-- ============================================================
+local farming    = false
+local farmThread = nil
+local totalOpened = 0
+local totalKept   = 0
+
+local function stopFarming()
+    farming = false
+    if farmThread then task.cancel(farmThread) farmThread = nil end
+    startBtn.Text             = "> START FARMING"
+    startBtn.BackgroundColor3 = Color3.fromRGB(30,130,30)
+    cdLabel.Text              = "stopped"
+    cdBar.Size                = UDim2.new(0,0,1,0)
+    log("Stopped -- " .. totalOpened .. " opened, " .. totalKept .. " kept", Color3.fromRGB(200,200,100))
+end
+
+local function startFarming()
+    farming     = true
+    totalOpened = 0
+    totalKept   = 0
+    startBtn.Text             = "[] STOP"
+    startBtn.BackgroundColor3 = Color3.fromRGB(130,30,30)
+    log("Started -- Group case, keeping $" .. KEEP_THRESHOLD .. "+", Color3.fromRGB(100,255,100))
+
+    farmThread = task.spawn(function()
+        while farming do
+            local before = getBankSnapshot()
+            local ok, err = pcall(function()
+                openCase:InvokeServer("Group", BATCH_SIZE, false, false)
+            end)
+            if not ok then
+                log("Open failed: " .. tostring(err), Color3.fromRGB(255,100,100))
+                task.wait(COOLDOWN)
+            else
+                totalOpened += BATCH_SIZE
+                task.wait(0.15)
+                local newItems = getNewItems(before)
+                local sellList = {}
+                for _, item in ipairs(newItems) do
+                    local val = getItemValue(item.Name, item.Wear)
+                    if val >= KEEP_THRESHOLD then
+                        totalKept += 1
+                        addKeepRow(item.Name, item.Wear, val)
+                        log("KEEP " .. item.Name .. " $" .. string.format("%.2f", val),
+                            val >= 1.5 and Color3.fromRGB(255,215,0) or Color3.fromRGB(100,255,100))
+                    else
+                        table.insert(sellList, item)
+                    end
+                end
+                if #sellList > 0 then sellItems(sellList) end
+                statsLabel.Text = totalOpened .. " opened | " .. totalKept .. " kept"
+                updateBalance()
+                local start = os.clock()
+                while farming and (os.clock()-start) < COOLDOWN do
+                    local pct = (os.clock()-start)/COOLDOWN
+                    cdBar.Size   = UDim2.new(pct,0,1,0)
+                    cdLabel.Text = string.format("cooldown: %.1fs", COOLDOWN-(os.clock()-start))
+                    task.wait(0.05)
+                end
+                cdBar.Size   = UDim2.new(1,0,1,0)
+                cdLabel.Text = "opening..."
+            end
+        end
+    end)
+end
+
+startBtn.MouseButton1Click:Connect(function()
+    if farming then stopFarming() else startFarming() end
+end)
+sellBtn.MouseButton1Click:Connect(function() task.spawn(sellAllTrash) end)
+
+-- ============================================================
+-- OBBY FARM LOOP
+-- ============================================================
+local obbyRunning  = false
+local obbyThread   = nil
+local totalEarned  = 0
+local runCount     = 0
+local rewardConn   = nil
+
+local function stopObby()
+    obbyRunning = false
+    if obbyThread then task.cancel(obbyThread) obbyThread = nil end
+    obbyStartBtn.Text             = "> START"
+    obbyStartBtn.BackgroundColor3 = Color3.fromRGB(30,130,30)
+    statusLabel.Text              = "stopped"
+    bar.Size                      = UDim2.new(0,0,1,0)
+end
+
+local function startObby()
+    obbyRunning = true
+    runCount    = 0
+    obbyStartBtn.Text             = "[] STOP"
+    obbyStartBtn.BackgroundColor3 = Color3.fromRGB(130,30,30)
+
+    -- watch for reward
+    local notifyRemote = RS:FindFirstChild("Remotes") and RS.Remotes:FindFirstChild("Notify")
+    if notifyRemote then
+        if rewardConn then rewardConn:Disconnect() end
+        rewardConn = notifyRemote.OnClientEvent:Connect(function(msg)
+            if type(msg)=="string" and msg:lower():find("obby") then
+                totalEarned += 5
+                earnLabel.Text = "Total earned: $" .. totalEarned
+                obbyLog("$5 awarded! Total: $" .. totalEarned, Color3.fromRGB(255,215,0))
+                updateBalance()
+            end
+        end)
+    end
+
+    obbyThread = task.spawn(function()
+        local total = #CHECKPOINTS
+        while obbyRunning do
+            runCount += 1
+            obbyLog("Run #" .. runCount .. " starting...", Color3.fromRGB(100,220,100))
+            statusLabel.Text = "run #" .. runCount
+
+            for i, cp in ipairs(CHECKPOINTS) do
+                if not obbyRunning then break end
+                local char = player.Character
+                local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+                if hrp then hrp.CFrame = CFrame.new(cp.pos + Vector3.new(0,3,0)) end
+                checkLabel.Text = "checkpoint " .. i .. " / " .. total .. "  [" .. cp.name .. "]"
+                bar.Size        = UDim2.new(i/total, 0, 1, 0)
+                statusLabel.Text = "run #" .. runCount .. " -- cp " .. cp.name
+                obbyLog("Touched " .. cp.name, i==total and Color3.fromRGB(255,215,0) or Color3.fromRGB(140,140,140))
+                task.wait(STEP_DELAY)
+            end
+
+            if obbyRunning then
+                bar.Size                 = UDim2.new(1,0,1,0)
+                bar.BackgroundColor3     = Color3.fromRGB(255,215,0)
+                statusLabel.Text         = "run #" .. runCount .. " -- waiting for reset..."
+                task.wait(LOOP_DELAY)
+                bar.BackgroundColor3     = Color3.fromRGB(50,200,50)
+                bar.Size                 = UDim2.new(0,0,1,0)
+            end
+        end
+    end)
+end
+
+obbyStartBtn.MouseButton1Click:Connect(function()
+    if obbyRunning then stopObby() else startObby() end
+end)
+
+task.spawn(function()
+    while gui.Parent do updateBalance() task.wait(3) end
+end)
+
+log("Ready -- Group case: Glock18 Shinobu $5.12, AWP PAW $1.31, SAWEDOFF KissLove $1.87", Color3.fromRGB(100,200,255))
+obbyLog("Ready -- " .. #CHECKPOINTS .. " checkpoints | " .. STEP_DELAY .. "s delay per checkpoint")
