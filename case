@@ -1,28 +1,30 @@
--- FarmAll v2 -- Premium UI + fixed sell
 local RS      = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 local CoreGui = game:GetService("CoreGui")
-local TweenService = game:GetService("TweenService")
+local TS      = game:GetService("TweenService")
 
 local player     = Players.LocalPlayer
 local openCase   = RS:WaitForChild("Remotes"):WaitForChild("OpenCase")
 local sellRemote = RS:WaitForChild("Remotes"):WaitForChild("Sell")
 
 local ITEM_VALUES = {
-    ["Glock18_Shinobu"]    = {["Field-Tested"]   = 5.12 },
-    ["SAWEDOFF_KissLove"]  = {["Battle-Scarred"] = 1.87 },
-    ["AWP_PAW"]            = {["Field-Tested"]   = 1.31 },
-    ["M4A1S_EmphorosaurS"] = {["Minimal Wear"]   = 0.79 },
-    ["P90_WaveBreaker"]    = {["Minimal Wear"]   = 0.73 },
-    ["GALIL_Connexion"]    = {["Minimal Wear"]   = 0.57 },
-    ["UMP45_Moonrise"]     = {["Field-Tested"]   = 0.32 },
-    ["M4A4_SteelWork"]     = {["Minimal Wear"]   = 0.33 },
-    ["SG553_Cyberforce"]   = {["Factory New"]    = 0.24 },
-    ["MP9_BuffBlue"]       = {["Minimal Wear"]   = 0.16 },
+    ["Glock18_Shinobu"]    = {["Field-Tested"]   = 5.12},
+    ["SAWEDOFF_KissLove"]  = {["Battle-Scarred"] = 1.87},
+    ["AWP_PAW"]            = {["Field-Tested"]   = 1.31},
+    ["M4A1S_EmphorosaurS"] = {["Minimal Wear"]   = 0.79},
+    ["P90_WaveBreaker"]    = {["Minimal Wear"]   = 0.73},
+    ["GALIL_Connexion"]    = {["Minimal Wear"]   = 0.57},
+    ["UMP45_Moonrise"]     = {["Field-Tested"]   = 0.32},
+    ["M4A4_SteelWork"]     = {["Minimal Wear"]   = 0.33},
+    ["SG553_Cyberforce"]   = {["Factory New"]    = 0.24},
+    ["MP9_BuffBlue"]       = {["Minimal Wear"]   = 0.16},
 }
-local KEEP_THRESHOLD = 0.55
-local COOLDOWN       = 6.0
-local BATCH_SIZE     = 5
+local KEEP_MIN   = 0.55
+local COOLDOWN   = 6.0
+local BATCH      = 5
+local OBBY_DELAY = 0.6
+local LOOP_DELAY = 5
+
 local CHECKPOINTS = {
     {name="1",      pos=Vector3.new(30.73, 60.61,107.98)},
     {name="2",      pos=Vector3.new(46.85, 16.05,105.98)},
@@ -40,150 +42,22 @@ local CHECKPOINTS = {
     {name="14",     pos=Vector3.new(32.64, 72.34,118.57)},
     {name="Finish", pos=Vector3.new(40.63, 73.86,117.78)},
 }
-local STEP_DELAY = 0.6
-local LOOP_DELAY = 5
+
+-- colors
+local BG    = Color3.fromRGB(13, 15, 23)
+local SURF  = Color3.fromRGB(20, 24, 36)
+local SURF2 = Color3.fromRGB(28, 34, 50)
+local CYAN  = Color3.fromRGB(56,189,248)
+local GREEN = Color3.fromRGB(52,211,153)
+local GOLD  = Color3.fromRGB(250,204,21)
+local RED   = Color3.fromRGB(239,68,68)
+local ORAN  = Color3.fromRGB(251,146,60)
+local TEXT  = Color3.fromRGB(226,232,240)
+local MUTED = Color3.fromRGB(100,116,139)
+local DIM   = Color3.fromRGB(40,50,70)
 
 -- ============================================================
--- COLORS
--- ============================================================
-local C = {
-    bg        = Color3.fromRGB(8,  10,  14),
-    surface   = Color3.fromRGB(14, 18,  26),
-    surface2  = Color3.fromRGB(20, 26,  38),
-    border    = Color3.fromRGB(30, 40,  60),
-    accent    = Color3.fromRGB(56, 189, 248),  -- cyan
-    gold      = Color3.fromRGB(250,204, 21),
-    green     = Color3.fromRGB(52, 211,153),
-    red       = Color3.fromRGB(248, 84, 84),
-    orange    = Color3.fromRGB(251,146, 60),
-    text      = Color3.fromRGB(226,232,240),
-    muted     = Color3.fromRGB(100,116,139),
-    dim       = Color3.fromRGB(51, 65, 85),
-}
-
--- ============================================================
--- UI HELPERS
--- ============================================================
-local function corner(parent, r)
-    Instance.new("UICorner", parent).CornerRadius = UDim.new(0, r or 8)
-end
-
-local function stroke(parent, col, thickness)
-    local s = Instance.new("UIStroke", parent)
-    s.Color     = col or C.border
-    s.Thickness = thickness or 1
-    s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-end
-
-local function gradient(parent, c0, c1, rot)
-    local g = Instance.new("UIGradient", parent)
-    g.Color    = ColorSequence.new(c0, c1)
-    g.Rotation = rot or 90
-end
-
-local function tween(obj, props, t, style, dir)
-    TweenService:Create(obj,
-        TweenInfo.new(t or 0.2, style or Enum.EasingStyle.Quad, dir or Enum.EasingDirection.Out),
-        props):Play()
-end
-
-local function mkLabel(parent, text, size, color, font, xa)
-    local l = Instance.new("TextLabel", parent)
-    l.BackgroundTransparency = 1
-    l.Text      = text
-    l.TextSize  = size or 11
-    l.TextColor3 = color or C.text
-    l.Font      = font or Enum.Font.GothamBold
-    l.TextXAlignment = xa or Enum.TextXAlignment.Left
-    l.TextTruncate   = Enum.TextTruncate.AtEnd
-    return l
-end
-
-local function mkFrame(parent, bg, trans)
-    local f = Instance.new("Frame", parent)
-    f.BackgroundColor3       = bg or C.surface
-    f.BackgroundTransparency = trans or 0
-    f.BorderSizePixel        = 0
-    return f
-end
-
-local function mkBtn(parent, text, bg)
-    local b = Instance.new("TextButton", parent)
-    b.BackgroundColor3 = bg or C.accent
-    b.BorderSizePixel  = 0
-    b.TextColor3       = Color3.fromRGB(5,10,20)
-    b.TextSize         = 12
-    b.Font             = Enum.Font.GothamBold
-    b.Text             = text
-    b.AutoButtonColor  = false
-    corner(b, 6)
-    -- hover effect
-    b.MouseEnter:Connect(function()
-        tween(b, {BackgroundColor3 = Color3.fromRGB(
-            math.min(255, bg and bg.R*255+30 or 120),
-            math.min(255, bg and bg.G*255+30 or 220),
-            math.min(255, bg and bg.B*255+20 or 270)
-        )}, 0.15)
-    end)
-    b.MouseLeave:Connect(function()
-        tween(b, {BackgroundColor3 = bg or C.accent}, 0.15)
-    end)
-    return b
-end
-
-local function mkBar(parent, y, h, col)
-    local bg = mkFrame(parent, C.dim)
-    bg.Size     = UDim2.new(1,-24,0,h or 5)
-    bg.Position = UDim2.new(0,12,0,y)
-    corner(bg, 3)
-    local fill = mkFrame(bg, col or C.accent)
-    fill.Size   = UDim2.new(0,0,1,0)
-    corner(fill, 3)
-    gradient(fill, col or C.accent, Color3.fromRGB(
-        math.min(255,(col or C.accent).R*255+40),
-        math.min(255,(col or C.accent).G*255+20),
-        math.min(255,(col or C.accent).B*255+60)
-    ), 90)
-    return fill, bg
-end
-
-local function mkScroll(parent, y, h)
-    local s = Instance.new("ScrollingFrame", parent)
-    s.Size                   = UDim2.new(1,-24,0,h)
-    s.Position               = UDim2.new(0,12,0,y)
-    s.BackgroundTransparency = 1
-    s.BorderSizePixel        = 0
-    s.ScrollBarThickness     = 2
-    s.ScrollBarImageColor3   = C.border
-    s.CanvasSize             = UDim2.new(0,0,0,0)
-    local layout = Instance.new("UIListLayout", s)
-    layout.Padding           = UDim.new(0,3)
-    return s
-end
-
-local function addLog(scroll, text, color)
-    local kids = scroll:GetChildren()
-    if #kids > 60 then
-        for i=1, #kids-55 do
-            if kids[i]:IsA("Frame") then kids[i]:Destroy() end
-        end
-    end
-    local row = mkFrame(scroll, C.surface2)
-    row.Size             = UDim2.new(1,0,0,18)
-    corner(row, 4)
-    local dot = mkFrame(row, color or C.muted)
-    dot.Size, dot.Position = UDim2.new(0,4,0,7), UDim2.new(0,6,0,0)
-    corner(dot, 2)
-    local lbl = mkLabel(row, os.date("%H:%M:%S") .. "  " .. text, 10, color or C.muted)
-    lbl.Size, lbl.Position = UDim2.new(1,-18,1,0), UDim2.new(0,16,0,0)
-    scroll.CanvasSize = UDim2.new(0,0,0, #scroll:GetChildren()*21)
-    scroll.CanvasPosition = Vector2.new(0, math.huge)
-    print("[FarmAll] " .. text)
-    return row
-end
-
--- ============================================================
--- MAIN WINDOW
+-- UI FACTORY
 -- ============================================================
 local old = CoreGui:FindFirstChild("FarmAll")
 if old then old:Destroy() end
@@ -192,454 +66,470 @@ local gui = Instance.new("ScreenGui")
 gui.Name, gui.ResetOnSpawn, gui.ZIndexBehavior = "FarmAll", false, Enum.ZIndexBehavior.Sibling
 gui.Parent = CoreGui
 
--- outer shell
-local shell = mkFrame(gui, C.bg)
-shell.Size     = UDim2.new(0,340,0,620)
-shell.Position = UDim2.new(0,16,0.5,-310)
-shell.Active, shell.Draggable = true, true
-corner(shell, 14)
-stroke(shell, C.border, 1)
--- subtle top gradient
-local topGlow = mkFrame(shell, Color3.fromRGB(56,189,248))
-topGlow.Size               = UDim2.new(1,0,0,2)
-topGlow.Position           = UDim2.new(0,0,0,0)
-topGlow.BackgroundTransparency = 0
-corner(topGlow, 14)
-gradient(topGlow,
-    Color3.fromRGB(56,189,248),
-    Color3.fromRGB(139,92,246), 0)
-
--- header
-local header = mkFrame(shell, C.surface)
-header.Size     = UDim2.new(1,0,0,56)
-header.Position = UDim2.new(0,0,0,2)
-corner(header, 12)
-
-local logoBox = mkFrame(header, Color3.fromRGB(56,189,248))
-logoBox.Size     = UDim2.new(0,36,0,36)
-logoBox.Position = UDim2.new(0,12,0,10)
-corner(logoBox, 8)
-gradient(logoBox,
-    Color3.fromRGB(56,189,248),
-    Color3.fromRGB(139,92,246), 135)
-local logoLbl = mkLabel(logoBox, "F", 20, Color3.fromRGB(5,10,20), Enum.Font.GothamBold, Enum.TextXAlignment.Center)
-logoLbl.Size, logoLbl.Position = UDim2.new(1,0,1,0), UDim2.new(0,0,0,0)
-
-local titleLbl = mkLabel(header, "FarmAll", 16, C.text, Enum.Font.GothamBold)
-titleLbl.Size, titleLbl.Position = UDim2.new(0,160,0,20), UDim2.new(0,56,0,8)
-
-local subLbl = mkLabel(header, "Case Farmer + Obby Runner", 10, C.muted, Enum.Font.Gotham)
-subLbl.Size, subLbl.Position = UDim2.new(0,200,0,14), UDim2.new(0,56,0,28)
-
-local balLbl = mkLabel(header, "$0.00", 15, C.green, Enum.Font.GothamBold, Enum.TextXAlignment.Right)
-balLbl.Size, balLbl.Position = UDim2.new(0,90,0,20), UDim2.new(1,-104,0,8)
-local balSubLbl = mkLabel(header, "balance", 9, C.muted, Enum.Font.Gotham, Enum.TextXAlignment.Right)
-balSubLbl.Size, balSubLbl.Position = UDim2.new(0,90,0,12), UDim2.new(1,-104,0,30)
-
--- ============================================================
--- TAB BAR
--- ============================================================
-local tabBar = mkFrame(shell, C.surface2)
-tabBar.Size     = UDim2.new(1,-24,0,34)
-tabBar.Position = UDim2.new(0,12,0,64)
-corner(tabBar, 8)
-stroke(tabBar, C.border, 1)
-
-local function mkTab(text, x, active)
-    local btn = mkFrame(tabBar, active and C.accent or Color3.fromRGB(0,0,0))
-    btn.BackgroundTransparency = active and 0 or 1
-    btn.Size     = UDim2.new(0,98,0,26)
-    btn.Position = UDim2.new(0,x,0,4)
-    corner(btn, 6)
-    local lbl = mkLabel(btn, text, 11,
-        active and Color3.fromRGB(5,10,20) or C.muted,
-        Enum.Font.GothamBold, Enum.TextXAlignment.Center)
-    lbl.Size, lbl.Position = UDim2.new(1,0,1,0), UDim2.new(0,0,0,0)
-    return btn, lbl
+local function frame(parent, size, pos, bg, trans)
+    local f = Instance.new("Frame", parent)
+    f.Size, f.Position       = size, pos
+    f.BackgroundColor3       = bg or SURF
+    f.BackgroundTransparency = trans or 0
+    f.BorderSizePixel        = 0
+    return f
 end
 
-local tabCase, tabCaseLbl   = mkTab("Cases",  4,  true)
-local tabObby, tabObbyLbl   = mkTab("Obby",   106, false)
-local tabKeeps, tabKeepsLbl = mkTab("Keeps",  208, false)
+local function corner(obj, r)
+    Instance.new("UICorner", obj).CornerRadius = UDim.new(0, r or 8)
+end
+
+local function stroke(obj, col, t)
+    local s = Instance.new("UIStroke", obj)
+    s.Color, s.Thickness = col or DIM, t or 1
+    s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+end
+
+local function label(parent, txt, size, col, font, xa)
+    local l = Instance.new("TextLabel", parent)
+    l.BackgroundTransparency = 1
+    l.Text, l.TextSize       = txt, size or 11
+    l.TextColor3             = col or TEXT
+    l.Font                   = font or Enum.Font.GothamBold
+    l.TextXAlignment         = xa or Enum.TextXAlignment.Left
+    l.TextTruncate           = Enum.TextTruncate.AtEnd
+    l.BorderSizePixel        = 0
+    return l
+end
+
+local function btn(parent, txt, size, pos, bg, tc)
+    local b = Instance.new("TextButton", parent)
+    b.Size, b.Position     = size, pos
+    b.BackgroundColor3     = bg or CYAN
+    b.TextColor3           = tc or Color3.fromRGB(5,10,20)
+    b.TextSize             = 12
+    b.Font                 = Enum.Font.GothamBold
+    b.Text                 = txt
+    b.BorderSizePixel      = 0
+    b.AutoButtonColor      = false
+    corner(b, 7)
+    b.MouseEnter:Connect(function()
+        TS:Create(b, TweenInfo.new(0.12), {BackgroundTransparency=0.25}):Play()
+    end)
+    b.MouseLeave:Connect(function()
+        TS:Create(b, TweenInfo.new(0.12), {BackgroundTransparency=0}):Play()
+    end)
+    return b
+end
+
+local function progressBar(parent, pos, col)
+    local bg = frame(parent,
+        UDim2.new(1,-24,0,6),
+        UDim2.new(0,12,0,pos),
+        DIM)
+    corner(bg, 3)
+    local fill = frame(bg, UDim2.new(0,0,1,0), UDim2.new(0,0,0,0), col or CYAN)
+    corner(fill, 3)
+    return fill
+end
+
+local function scrollArea(parent, pos, h)
+    local s = Instance.new("ScrollingFrame", parent)
+    s.Size, s.Position       = UDim2.new(1,-24,0,h), UDim2.new(0,12,0,pos)
+    s.BackgroundTransparency = 1
+    s.BorderSizePixel        = 0
+    s.ScrollBarThickness     = 2
+    s.ScrollBarImageColor3   = DIM
+    s.CanvasSize             = UDim2.new(0,0,0,0)
+    Instance.new("UIListLayout", s).Padding = UDim.new(0,3)
+    return s
+end
+
+local function logLine(scroll, txt, col)
+    local kids = scroll:GetChildren()
+    if #kids > 70 then
+        for i=1, #kids-65 do
+            if kids[i]:IsA("Frame") then kids[i]:Destroy() end
+        end
+    end
+    local row = frame(scroll, UDim2.new(1,0,0,20), UDim2.new(0,0,0,0), SURF2)
+    corner(row, 5)
+    local dot = frame(row, UDim2.new(0,5,0,5), UDim2.new(0,6,0,7), col or MUTED)
+    corner(dot, 3)
+    local lbl = label(row, os.date("%H:%M ")..txt, 10, col or MUTED, Enum.Font.Gotham)
+    lbl.Size, lbl.Position = UDim2.new(1,-20,1,0), UDim2.new(0,18,0,0)
+    scroll.CanvasSize     = UDim2.new(0,0,0, #scroll:GetChildren()*23)
+    scroll.CanvasPosition = Vector2.new(0, math.huge)
+    print("[FA] "..txt)
+end
 
 -- ============================================================
--- CONTENT AREA
+-- WINDOW
 -- ============================================================
-local content = mkFrame(shell, Color3.fromRGB(0,0,0))
-content.BackgroundTransparency = 1
-content.Size     = UDim2.new(1,0,0,520)
-content.Position = UDim2.new(0,0,0,105)
+local win = frame(gui, UDim2.new(0,320,0,560), UDim2.new(0,20,0.5,-280), BG)
+win.Active, win.Draggable = true, true
+corner(win, 12)
+stroke(win, DIM, 1)
 
--- PANEL helper
-local function mkPanel()
-    local p = mkFrame(content, Color3.fromRGB(0,0,0))
+-- top accent line
+local topLine = frame(win, UDim2.new(1,0,0,3), UDim2.new(0,0,0,0), CYAN)
+corner(topLine, 12)
+local g = Instance.new("UIGradient", topLine)
+g.Color    = ColorSequence.new(CYAN, Color3.fromRGB(139,92,246))
+g.Rotation = 0
+
+-- header bar
+local hdr = frame(win, UDim2.new(1,0,0,58), UDim2.new(0,0,0,3), SURF)
+corner(hdr, 10)
+
+-- icon
+local icon = frame(hdr, UDim2.new(0,38,0,38), UDim2.new(0,10,0,10), CYAN)
+corner(icon, 9)
+local ig = Instance.new("UIGradient", icon)
+ig.Color    = ColorSequence.new(CYAN, Color3.fromRGB(99,102,241))
+ig.Rotation = 135
+local iconLbl = label(icon, "FA", 14, Color3.fromRGB(5,10,20), Enum.Font.GothamBold, Enum.TextXAlignment.Center)
+iconLbl.Size, iconLbl.Position = UDim2.new(1,0,1,0), UDim2.new(0,0,0,0)
+
+local titleLbl = label(hdr, "FarmAll", 17, TEXT)
+titleLbl.Size, titleLbl.Position = UDim2.new(0,140,0,22), UDim2.new(0,56,0,8)
+
+local subLbl = label(hdr, "Case Farmer + Obby Runner", 10, MUTED, Enum.Font.Gotham)
+subLbl.Size, subLbl.Position = UDim2.new(0,180,0,14), UDim2.new(0,56,0,31)
+
+local balLbl = label(hdr, "$0.00", 16, GREEN, Enum.Font.GothamBold, Enum.TextXAlignment.Right)
+balLbl.Size, balLbl.Position = UDim2.new(0,90,0,22), UDim2.new(1,-100,0,8)
+local balSub = label(hdr, "balance", 9, MUTED, Enum.Font.Gotham, Enum.TextXAlignment.Right)
+balSub.Size, balSub.Position = UDim2.new(0,90,0,12), UDim2.new(1,-100,0,32)
+
+-- ============================================================
+-- TABS
+-- ============================================================
+local tabBar = frame(win, UDim2.new(1,-24,0,36), UDim2.new(0,12,0,66), SURF2)
+corner(tabBar, 8)
+stroke(tabBar, DIM, 1)
+
+local TABS = {"Cases", "Obby", "Keeps"}
+local tabBtns = {}
+local tabW = (296) / #TABS
+
+for i, name in ipairs(TABS) do
+    local tb = frame(tabBar,
+        UDim2.new(0, tabW-8, 0, 26),
+        UDim2.new(0, 4+(i-1)*tabW, 0, 5),
+        i==1 and CYAN or Color3.fromRGB(0,0,0))
+    tb.BackgroundTransparency = i==1 and 0 or 1
+    corner(tb, 6)
+    local tl = label(tb, name, 11, i==1 and Color3.fromRGB(5,10,20) or MUTED,
+        Enum.Font.GothamBold, Enum.TextXAlignment.Center)
+    tl.Size, tl.Position = UDim2.new(1,0,1,0), UDim2.new(0,0,0,0)
+    tabBtns[i] = {frame=tb, lbl=tl}
+    tb.InputBegan:Connect(function(inp)
+        if inp.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+        for j, t in ipairs(tabBtns) do
+            local active = (j==i)
+            TS:Create(t.frame, TweenInfo.new(0.15), {BackgroundTransparency = active and 0 or 1}):Play()
+            t.lbl.TextColor3 = active and Color3.fromRGB(5,10,20) or MUTED
+        end
+        for j, p in ipairs(panels) do p.Visible = (j==i) end
+    end)
+end
+
+-- ============================================================
+-- PANELS
+-- ============================================================
+panels = {}
+
+local function newPanel()
+    local p = frame(win, UDim2.new(1,-24,0,446), UDim2.new(0,12,0,108), Color3.fromRGB(0,0,0))
     p.BackgroundTransparency = 1
-    p.Size     = UDim2.new(1,0,1,0)
-    p.Position = UDim2.new(0,0,0,0)
-    p.Visible  = false
+    p.Visible = false
     return p
 end
 
--- ============================================================
--- CASES PANEL
--- ============================================================
-local casePanel = mkPanel()
-casePanel.Visible = true
+-- ===================== PANEL 1: CASES =====================
+local pCase = newPanel()
+pCase.Visible = true
+table.insert(panels, pCase)
 
--- stats row
-local statsRow = mkFrame(casePanel, C.surface2)
-statsRow.Size     = UDim2.new(1,-24,0,52)
-statsRow.Position = UDim2.new(0,12,0,8)
-corner(statsRow, 10)
-stroke(statsRow, C.border, 1)
-
-local function statBox(x, label, valText, col)
-    local box = mkFrame(statsRow, Color3.fromRGB(0,0,0))
-    box.BackgroundTransparency = 1
-    box.Size     = UDim2.new(0,90,1,0)
-    box.Position = UDim2.new(0,x,0,0)
-    local v = mkLabel(box, valText, 18, col or C.text, Enum.Font.GothamBold, Enum.TextXAlignment.Center)
-    v.Size, v.Position = UDim2.new(1,0,0,26), UDim2.new(0,0,0,6)
-    local l = mkLabel(box, label, 9, C.muted, Enum.Font.Gotham, Enum.TextXAlignment.Center)
-    l.Size, l.Position = UDim2.new(1,0,0,12), UDim2.new(0,0,0,34)
-    return v
+-- stat cards
+local function statCard(parent, x, title, initVal, col)
+    local card = frame(parent, UDim2.new(0,88,0,58), UDim2.new(0,x,0,0), SURF2)
+    corner(card, 8)
+    stroke(card, DIM, 1)
+    local vl = label(card, initVal, 22, col or TEXT, Enum.Font.GothamBold, Enum.TextXAlignment.Center)
+    vl.Size, vl.Position = UDim2.new(1,0,0,30), UDim2.new(0,0,0,8)
+    local tl = label(card, title, 9, MUTED, Enum.Font.Gotham, Enum.TextXAlignment.Center)
+    tl.Size, tl.Position = UDim2.new(1,0,0,14), UDim2.new(0,0,0,40)
+    return vl
 end
 
-local openedVal = statBox(6,   "OPENED",   "0",     C.accent)
-local keptVal   = statBox(104, "KEPT",     "0",     C.green)
-local soldVal   = statBox(202, "SOLD",     "0",     C.orange)
+local cardRow = frame(pCase, UDim2.new(1,0,0,58), UDim2.new(0,0,0,0), Color3.fromRGB(0,0,0))
+cardRow.BackgroundTransparency = 1
+local openedV = statCard(cardRow, 0,   "OPENED", "0",   CYAN)
+local keptV   = statCard(cardRow, 96,  "KEPT",   "0",   GREEN)
+local soldV   = statCard(cardRow, 192, "SOLD",   "0",   ORAN)
 
--- cooldown bar
-local cdFill, cdBgFrame = mkBar(casePanel, 72, 6, C.accent)
+local cdFill   = progressBar(pCase, 68, CYAN)
+local cdLbl    = label(pCase, "Ready", 10, MUTED, Enum.Font.Gotham)
+cdLbl.Size, cdLbl.Position = UDim2.new(0.5,0,0,14), UDim2.new(0,0,0,77)
+local cdTime   = label(pCase, "", 10, CYAN, Enum.Font.GothamBold, Enum.TextXAlignment.Right)
+cdTime.Size, cdTime.Position = UDim2.new(0.45,0,0,14), UDim2.new(0.55,0,0,77)
 
-local cdLbl = mkLabel(casePanel, "Ready to open", 10, C.muted)
-cdLbl.Size, cdLbl.Position = UDim2.new(0.6,0,0,13), UDim2.new(0,12,0,80)
-local cdTimeLbl = mkLabel(casePanel, "", 10, C.accent, Enum.Font.GothamBold, Enum.TextXAlignment.Right)
-cdTimeLbl.Size, cdTimeLbl.Position = UDim2.new(0,80,0,13), UDim2.new(1,-92,0,80)
+local caseBtn2 = btn(pCase, "START FARMING",
+    UDim2.new(1,0,0,38), UDim2.new(0,0,0,96), CYAN)
+caseBtn2.TextSize = 13
 
--- start button
-local caseStartBtn = mkBtn(casePanel, "START FARMING", C.accent)
-caseStartBtn.Size     = UDim2.new(1,-24,0,40)
-caseStartBtn.Position = UDim2.new(0,12,0,100)
-caseStartBtn.TextSize = 13
-caseStartBtn.TextColor3 = Color3.fromRGB(5,10,20)
-gradient(caseStartBtn, C.accent, Color3.fromRGB(99,179,237), 90)
+local sellBtn2 = btn(pCase, "Sell All Trash Now",
+    UDim2.new(1,0,0,32), UDim2.new(0,0,0,140), SURF2, ORAN)
+stroke(sellBtn2, DIM, 1)
 
--- sell button
-local sellTrashBtn = mkBtn(casePanel, "Sell All Trash Now", Color3.fromRGB(30,40,55))
-sellTrashBtn.Size     = UDim2.new(1,-24,0,32)
-sellTrashBtn.Position = UDim2.new(0,12,0,148)
-sellTrashBtn.TextColor3 = C.orange
-stroke(sellTrashBtn, C.border, 1)
+local caseLogHdr = label(pCase, "ACTIVITY LOG", 9, DIM, Enum.Font.GothamBold)
+caseLogHdr.Size, caseLogHdr.Position = UDim2.new(1,0,0,12), UDim2.new(0,0,0,182)
+local caseLog = scrollArea(pCase, 196, 246)
 
--- section label
-local logSec = mkLabel(casePanel, "ACTIVITY", 9, C.dim, Enum.Font.GothamBold)
-logSec.Size, logSec.Position = UDim2.new(1,-24,0,12), UDim2.new(0,12,0,190)
+-- ===================== PANEL 2: OBBY =====================
+local pObby = newPanel()
+table.insert(panels, pObby)
 
-local caseLog = mkScroll(casePanel, 206, 308)
+local obbyCardRow = frame(pObby, UDim2.new(1,0,0,58), UDim2.new(0,0,0,0), Color3.fromRGB(0,0,0))
+obbyCardRow.BackgroundTransparency = 1
+local runsV   = statCard(obbyCardRow, 0,   "RUNS",    "0",   CYAN)
+local earnedV = statCard(obbyCardRow, 96,  "EARNED",  "$0",  GOLD)
+local delayV  = statCard(obbyCardRow, 192, "DELAY",   OBBY_DELAY.."s", MUTED)
 
--- ============================================================
--- OBBY PANEL
--- ============================================================
-local obbyPanel = mkPanel()
+local obbyFill = progressBar(pObby, 68, GREEN)
+local obbyStep = label(pObby, "Press START to begin", 10, MUTED, Enum.Font.Gotham)
+obbyStep.Size, obbyStep.Position = UDim2.new(0.6,0,0,14), UDim2.new(0,0,0,77)
+local obbyPct = label(pObby, "", 10, GREEN, Enum.Font.GothamBold, Enum.TextXAlignment.Right)
+obbyPct.Size, obbyPct.Position = UDim2.new(0.35,0,0,14), UDim2.new(0.65,0,0,77)
 
--- run stats
-local obbyRow = mkFrame(obbyPanel, C.surface2)
-obbyRow.Size     = UDim2.new(1,-24,0,52)
-obbyRow.Position = UDim2.new(0,12,0,8)
-corner(obbyRow, 10)
-stroke(obbyRow, C.border, 1)
+local obbyBtn2 = btn(pObby, "START OBBY FARM",
+    UDim2.new(1,0,0,38), UDim2.new(0,0,0,96), GREEN, Color3.fromRGB(5,20,14))
+obbyBtn2.TextSize = 13
 
-local runsVal   = statBox(6,   "RUNS",     "0",    C.accent)
-local earnedVal = statBox(104, "EARNED",   "$0",   C.gold)
-local delayVal  = statBox(202, "DELAY",    STEP_DELAY.."s", C.muted)
+local obbyLogHdr = label(pObby, "ACTIVITY LOG", 9, DIM, Enum.Font.GothamBold)
+obbyLogHdr.Size, obbyLogHdr.Position = UDim2.new(1,0,0,12), UDim2.new(0,0,0,144)
+local obbyLog = scrollArea(pObby, 158, 284)
 
--- progress bar
-local obbyFill, _ = mkBar(obbyPanel, 72, 6, C.green)
+-- ===================== PANEL 3: KEEPS =====================
+local pKeeps = newPanel()
+table.insert(panels, pKeeps)
 
-local obbyStepLbl = mkLabel(obbyPanel, "Press START to begin", 10, C.muted)
-obbyStepLbl.Size, obbyStepLbl.Position = UDim2.new(0.7,0,0,13), UDim2.new(0,12,0,80)
-local obbyPctLbl = mkLabel(obbyPanel, "0%", 10, C.green, Enum.Font.GothamBold, Enum.TextXAlignment.Right)
-obbyPctLbl.Size, obbyPctLbl.Position = UDim2.new(0,60,0,13), UDim2.new(1,-72,0,80)
+local keepsHdr = label(pKeeps, "ITEMS KEPT THIS SESSION", 9, DIM, Enum.Font.GothamBold)
+keepsHdr.Size, keepsHdr.Position = UDim2.new(1,0,0,14), UDim2.new(0,0,0,0)
+local keepsList = scrollArea(pKeeps, 18, 428)
 
-local obbyStartBtn = mkBtn(obbyPanel, "START OBBY FARM", C.green)
-obbyStartBtn.Size     = UDim2.new(1,-24,0,40)
-obbyStartBtn.Position = UDim2.new(0,12,0,100)
-obbyStartBtn.TextSize = 13
-obbyStartBtn.TextColor3 = Color3.fromRGB(5,20,14)
-gradient(obbyStartBtn, C.green, Color3.fromRGB(16,185,129), 90)
+local function addKeep(name, wear, val)
+    local row = frame(keepsList, UDim2.new(1,0,0,42), UDim2.new(0,0,0,0), SURF2)
+    corner(row, 7)
+    stroke(row, val>=1.5 and Color3.fromRGB(80,60,5) or DIM, 1)
 
-local obbyLogSec = mkLabel(obbyPanel, "ACTIVITY", 9, C.dim, Enum.Font.GothamBold)
-obbyLogSec.Size, obbyLogSec.Position = UDim2.new(1,-24,0,12), UDim2.new(0,12,0,150)
+    local bar2 = frame(row, UDim2.new(0,4,0,28), UDim2.new(0,6,0,7), val>=1.5 and GOLD or GREEN)
+    corner(bar2, 2)
 
-local obbyLog2 = mkScroll(obbyPanel, 166, 348)
+    local nl = label(row, name, 11, val>=1.5 and GOLD or GREEN)
+    nl.Size, nl.Position = UDim2.new(1,-90,0,16), UDim2.new(0,16,0,5)
+    local wl = label(row, wear, 9, MUTED, Enum.Font.Gotham)
+    wl.Size, wl.Position = UDim2.new(1,-90,0,13), UDim2.new(0,16,0,24)
+    local vl = label(row, "$"..string.format("%.2f",val), 14, val>=1.5 and GOLD or GREEN,
+        Enum.Font.GothamBold, Enum.TextXAlignment.Right)
+    vl.Size, vl.Position = UDim2.new(0,72,0,24), UDim2.new(1,-74,0,9)
 
--- ============================================================
--- KEEPS PANEL
--- ============================================================
-local keepsPanel = mkPanel()
-
-local keepsSec = mkLabel(keepsPanel, "ITEMS KEPT THIS SESSION", 9, C.dim, Enum.Font.GothamBold)
-keepsSec.Size, keepsSec.Position = UDim2.new(1,-24,0,12), UDim2.new(0,12,0,8)
-
-local keepsList = mkScroll(keepsPanel, 24, 490)
-
-local function addKeepEntry(name, wear, val)
-    local row = mkFrame(keepsList, C.surface2)
-    row.Size = UDim2.new(1,0,0,36)
-    corner(row, 6)
-    stroke(row, val >= 1.5 and Color3.fromRGB(250,204,21) or C.border, 1)
-
-    local pill = mkFrame(row, val >= 1.5 and Color3.fromRGB(60,50,10) or Color3.fromRGB(10,50,30))
-    pill.Size, pill.Position = UDim2.new(0,6,1,-12), UDim2.new(0,6,0,6)
-    corner(pill, 3)
-
-    local nameLbl = mkLabel(row, name, 11, val >= 1.5 and C.gold or C.green, Enum.Font.GothamBold)
-    nameLbl.Size, nameLbl.Position = UDim2.new(1,-90,0,16), UDim2.new(0,18,0,4)
-    local wearLbl = mkLabel(row, wear, 9, C.muted, Enum.Font.Gotham)
-    wearLbl.Size, wearLbl.Position = UDim2.new(1,-90,0,12), UDim2.new(0,18,0,22)
-    local valLbl = mkLabel(row, "$"..string.format("%.2f",val), 13,
-        val >= 1.5 and C.gold or C.green, Enum.Font.GothamBold, Enum.TextXAlignment.Right)
-    valLbl.Size, valLbl.Position = UDim2.new(0,70,0,20), UDim2.new(1,-76,0,8)
-
-    keepsList.CanvasSize = UDim2.new(0,0,0, #keepsList:GetChildren()*39)
+    keepsList.CanvasSize     = UDim2.new(0,0,0, #keepsList:GetChildren()*45)
     keepsList.CanvasPosition = Vector2.new(0, math.huge)
 end
 
 -- ============================================================
--- TAB SWITCHING
--- ============================================================
-local panels    = {casePanel, obbyPanel, keepsPanel}
-local tabBtns   = {tabCase,   tabObby,   keepsPanel}
-local tabFrames = {tabCase, tabObby, tabKeeps}
-local tabLabels = {tabCaseLbl, tabObbyLbl, tabKeepsLbl}
-
-local function switchTab(idx)
-    for i, p in ipairs(panels) do
-        p.Visible = (i == idx)
-    end
-    for i, t in ipairs(tabFrames) do
-        local active = (i == idx)
-        tween(t, {BackgroundTransparency = active and 0 or 1}, 0.2)
-        tabLabels[i].TextColor3 = active and Color3.fromRGB(5,10,20) or C.muted
-        if active then
-            gradient(t, C.accent, Color3.fromRGB(99,179,237), 90)
-        end
-    end
-end
-
-tabCase.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 then switchTab(1) end end)
-tabObby.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 then switchTab(2) end end)
-tabKeeps.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 then switchTab(3) end end)
-
--- ============================================================
--- HELPERS
+-- LOGIC HELPERS
 -- ============================================================
 local function getBalance()
     local ok, v = pcall(function() return player.PlayerData.Currencies.Balance.Value end)
     return ok and v or 0
 end
-
-local function updateBalance()
-    local bal = getBalance()
-    tween(balLbl, {TextColor3 = C.green}, 0.1)
-    balLbl.Text = "$"..string.format("%.2f", bal)
+local function updateBal()
+    balLbl.Text = "$"..string.format("%.2f", getBalance())
 end
 
-local function getItemValue(name, wear)
+local function itemVal(name, wear)
     local e = ITEM_VALUES[name]
     return e and (e[wear] or 0) or 0
 end
 
-local function getBankSnap()
+local function bankSnap()
     local snap = {}
     local bank = player.PlayerData:FindFirstChild("Bank")
-    if not bank then return snap end
-    for _, item in ipairs(bank:GetChildren()) do
-        local uuid = item:GetAttribute("UUID")
-        if uuid then snap[uuid] = true end
-    end
+    if bank then for _, i in ipairs(bank:GetChildren()) do
+        local u = i:GetAttribute("UUID")
+        if u then snap[u]=true end
+    end end
     return snap
 end
 
-local function getNewItems(snap)
+local function newItems(snap)
     local new = {}
     local bank = player.PlayerData:FindFirstChild("Bank")
-    if not bank then return new end
-    for _, item in ipairs(bank:GetChildren()) do
-        local uuid = item:GetAttribute("UUID")
-        if uuid and not snap[uuid] then
+    if bank then for _, i in ipairs(bank:GetChildren()) do
+        local u = i:GetAttribute("UUID")
+        if u and not snap[u] then
             table.insert(new, {
-                Name     = item.Name,
-                Wear     = item:GetAttribute("Wear") or "",
-                Stattrak = item:GetAttribute("Stattrak") == true,
-                Age      = item:GetAttribute("TimeObtained") or 0,
-                UUID     = uuid,
+                Name     = i.Name,
+                Wear     = i:GetAttribute("Wear") or "",
+                Stattrak = i:GetAttribute("Stattrak")==true,
+                Age      = i:GetAttribute("TimeObtained") or 0,
+                UUID     = u,
             })
         end
-    end
+    end end
     return new
 end
 
--- FIXED: use Name field, confirmed working format
+-- FIXED sell: Name field matches confirmed working format
+local totalSold = 0
 local function sellItems(items)
-    if #items == 0 then return 0 end
+    if #items==0 then return 0 end
     local payload = {}
-    for _, item in ipairs(items) do
+    for _, it in ipairs(items) do
         table.insert(payload, {
-            Name     = item.Name,
-            Wear     = item.Wear,
-            Stattrak = item.Stattrak,
-            Age      = item.Age,
-            UUID     = item.UUID,
+            Name=it.Name, Wear=it.Wear,
+            Stattrak=it.Stattrak, Age=it.Age, UUID=it.UUID
         })
     end
-    local ok, res = pcall(function()
-        return sellRemote:InvokeServer(payload)
-    end)
-    return (ok and res ~= nil) and #items or 0
+    local ok, res = pcall(function() return sellRemote:InvokeServer(payload) end)
+    return (ok and res~=nil) and #items or 0
 end
 
--- ============================================================
--- SELL TRASH
--- ============================================================
-local totalSoldCount = 0
-
-local function sellAllTrash()
+local function doSellTrash()
     local bank = player.PlayerData:FindFirstChild("Bank")
-    if not bank then addLog(caseLog, "No bank found", C.red) return end
+    if not bank then logLine(caseLog, "No bank found", RED) return end
     local toSell = {}
-    for _, item in ipairs(bank:GetChildren()) do
-        if not item:GetAttribute("Escrow") and not item:GetAttribute("Locked") then
-            if getItemValue(item.Name, item:GetAttribute("Wear") or "") < KEEP_THRESHOLD then
+    for _, it in ipairs(bank:GetChildren()) do
+        if not it:GetAttribute("Escrow") and not it:GetAttribute("Locked") then
+            if itemVal(it.Name, it:GetAttribute("Wear") or "") < KEEP_MIN then
                 table.insert(toSell, {
-                    Name     = item.Name,
-                    Wear     = item:GetAttribute("Wear") or "",
-                    Stattrak = item:GetAttribute("Stattrak") == true,
-                    Age      = item:GetAttribute("TimeObtained") or 0,
-                    UUID     = item:GetAttribute("UUID"),
+                    Name=it.Name, Wear=it:GetAttribute("Wear") or "",
+                    Stattrak=it:GetAttribute("Stattrak")==true,
+                    Age=it:GetAttribute("TimeObtained") or 0, UUID=it:GetAttribute("UUID")
                 })
             end
         end
     end
-    if #toSell == 0 then
-        addLog(caseLog, "Nothing to sell", C.muted)
-        return
-    end
+    if #toSell==0 then logLine(caseLog,"Nothing below $"..KEEP_MIN,MUTED) return end
     local sold = sellItems(toSell)
-    totalSoldCount += sold
-    soldVal.Text = tostring(totalSoldCount)
-    addLog(caseLog, "Sold "..sold.." trash items", C.orange)
-    updateBalance()
+    totalSold += sold
+    soldV.Text = tostring(totalSold)
+    logLine(caseLog, "Sold "..sold.." trash items", ORAN)
+    updateBal()
 end
 
-sellTrashBtn.MouseButton1Click:Connect(function() task.spawn(sellAllTrash) end)
+sellBtn2.MouseButton1Click:Connect(function() task.spawn(doSellTrash) end)
 
 -- ============================================================
 -- CASE FARM
 -- ============================================================
-local caseFarming  = false
-local caseThread   = nil
-local totalOpened  = 0
-local totalKept    = 0
+local caseFarming = false
+local caseThread  = nil
+local nOpened, nKept = 0, 0
 
 local function stopCase()
     caseFarming = false
-    if caseThread then task.cancel(caseThread) caseThread = nil end
-    caseStartBtn.Text = "START FARMING"
-    tween(caseStartBtn, {BackgroundColor3 = C.accent}, 0.3)
+    if caseThread then task.cancel(caseThread) caseThread=nil end
+    caseBtn2.Text = "START FARMING"
+    TS:Create(caseBtn2, TweenInfo.new(0.2), {BackgroundColor3=CYAN}):Play()
     cdLbl.Text = "Stopped"
     cdFill.Size = UDim2.new(0,0,1,0)
+    cdTime.Text = ""
 end
 
 local function startCase()
     caseFarming = true
-    caseStartBtn.Text = "STOP FARMING"
-    tween(caseStartBtn, {BackgroundColor3 = C.red}, 0.3)
-    addLog(caseLog, "Case farm started", C.green)
+    caseBtn2.Text = "STOP FARMING"
+    TS:Create(caseBtn2, TweenInfo.new(0.2), {BackgroundColor3=RED}):Play()
+    caseBtn2.TextColor3 = TEXT
+    logLine(caseLog, "Started -- Group case x"..BATCH, GREEN)
 
     caseThread = task.spawn(function()
         while caseFarming do
-            local snap = getBankSnap()
+            local snap = bankSnap()
             cdLbl.Text = "Opening..."
+            cdTime.Text = ""
+
             local ok, err = pcall(function()
-                openCase:InvokeServer("Group", BATCH_SIZE, false, false)
+                openCase:InvokeServer("Group", BATCH, false, false)
             end)
+
             if not ok then
-                addLog(caseLog, "Failed: "..tostring(err), C.red)
+                logLine(caseLog, "Failed: "..tostring(err), RED)
                 task.wait(COOLDOWN)
             else
-                totalOpened += BATCH_SIZE
-                openedVal.Text = tostring(totalOpened)
+                nOpened += BATCH
+                openedV.Text = tostring(nOpened)
                 task.wait(0.15)
 
-                local newItems = getNewItems(snap)
+                local drops = newItems(snap)
                 local toSell = {}
-                for _, item in ipairs(newItems) do
-                    local val = getItemValue(item.Name, item.Wear)
-                    if val >= KEEP_THRESHOLD then
-                        totalKept += 1
-                        keptVal.Text = tostring(totalKept)
-                        addLog(caseLog,
-                            "KEPT  "..item.Name.."  $"..string.format("%.2f",val),
-                            val >= 1.5 and C.gold or C.green)
-                        addKeepEntry(item.Name, item.Wear, val)
+                for _, it in ipairs(drops) do
+                    local v = itemVal(it.Name, it.Wear)
+                    if v >= KEEP_MIN then
+                        nKept += 1
+                        keptV.Text = tostring(nKept)
+                        logLine(caseLog, "KEPT  "..it.Name.."  $"..string.format("%.2f",v),
+                            v>=1.5 and GOLD or GREEN)
+                        addKeep(it.Name, it.Wear, v)
                     else
-                        table.insert(toSell, item)
+                        table.insert(toSell, it)
                     end
                 end
                 if #toSell > 0 then
                     local sold = sellItems(toSell)
-                    totalSoldCount += sold
-                    soldVal.Text = tostring(totalSoldCount)
+                    totalSold += sold
+                    soldV.Text = tostring(totalSold)
                 end
-                updateBalance()
+                updateBal()
 
-                -- cooldown animation
+                -- cooldown bar
                 local t0 = os.clock()
                 while caseFarming and (os.clock()-t0) < COOLDOWN do
                     local pct = (os.clock()-t0)/COOLDOWN
                     local rem = COOLDOWN-(os.clock()-t0)
-                    tween(cdFill, {Size=UDim2.new(pct,0,1,0)}, 0.05)
+                    TS:Create(cdFill, TweenInfo.new(0.05), {Size=UDim2.new(pct,0,1,0)}):Play()
                     cdLbl.Text  = "Next open in"
-                    cdTimeLbl.Text = string.format("%.1fs", rem)
+                    cdTime.Text = string.format("%.1fs", rem)
                     task.wait(0.05)
                 end
-                cdFill.Size    = UDim2.new(1,0,1,0)
-                cdTimeLbl.Text = ""
+                cdFill.Size = UDim2.new(1,0,1,0)
+                cdTime.Text = ""
             end
         end
     end)
 end
 
-caseStartBtn.MouseButton1Click:Connect(function()
+caseBtn2.MouseButton1Click:Connect(function()
     if caseFarming then stopCase() else startCase() end
 end)
 
 -- ============================================================
 -- OBBY FARM
 -- ============================================================
-local obbyFarming  = false
-local obbyThread   = nil
-local obbyEarned   = 0
-local obbyRuns     = 0
-local rewardConn   = nil
+local obbyFarming = false
+local obbyThread  = nil
+local obbyEarned  = 0
+local obbyRuns    = 0
+local rewardConn  = nil
 
 local function stopObby()
     obbyFarming = false
-    if obbyThread then task.cancel(obbyThread) obbyThread = nil end
-    obbyStartBtn.Text = "START OBBY FARM"
-    tween(obbyStartBtn, {BackgroundColor3 = C.green}, 0.3)
-    obbyStepLbl.Text = "Stopped"
-    obbyFill.Size    = UDim2.new(0,0,1,0)
+    if obbyThread then task.cancel(obbyThread) obbyThread=nil end
+    obbyBtn2.Text = "START OBBY FARM"
+    TS:Create(obbyBtn2, TweenInfo.new(0.2), {BackgroundColor3=GREEN}):Play()
+    obbyBtn2.TextColor3 = Color3.fromRGB(5,20,14)
+    obbyStep.Text = "Stopped"
+    obbyPct.Text  = ""
+    obbyFill.Size = UDim2.new(0,0,1,0)
 end
 
 local function startObby()
     obbyFarming = true
     obbyRuns    = 0
-    obbyStartBtn.Text = "STOP OBBY FARM"
-    tween(obbyStartBtn, {BackgroundColor3 = C.red}, 0.3)
-    addLog(obbyLog2, "Obby farm started", C.green)
+    obbyBtn2.Text = "STOP OBBY FARM"
+    TS:Create(obbyBtn2, TweenInfo.new(0.2), {BackgroundColor3=RED}):Play()
+    obbyBtn2.TextColor3 = TEXT
+    logLine(obbyLog, "Obby started -- "..OBBY_DELAY.."s/checkpoint", GREEN)
 
     local notifyR = RS:FindFirstChild("Remotes") and RS.Remotes:FindFirstChild("Notify")
     if notifyR then
@@ -647,9 +537,9 @@ local function startObby()
         rewardConn = notifyR.OnClientEvent:Connect(function(msg)
             if type(msg)=="string" and msg:lower():find("obby") then
                 obbyEarned += 5
-                earnedVal.Text = "$"..obbyEarned
-                addLog(obbyLog2, "$5 reward! Total $"..obbyEarned, C.gold)
-                updateBalance()
+                earnedV.Text = "$"..obbyEarned
+                logLine(obbyLog, "$5 reward! Total $"..obbyEarned, GOLD)
+                updateBal()
             end
         end)
     end
@@ -658,41 +548,40 @@ local function startObby()
         local total = #CHECKPOINTS
         while obbyFarming do
             obbyRuns += 1
-            runsVal.Text = tostring(obbyRuns)
-            addLog(obbyLog2, "Run #"..obbyRuns.." started", C.accent)
-
+            runsV.Text = tostring(obbyRuns)
+            logLine(obbyLog, "Run #"..obbyRuns, CYAN)
             for i, cp in ipairs(CHECKPOINTS) do
                 if not obbyFarming then break end
                 local char = player.Character
                 local hrp  = char and char:FindFirstChild("HumanoidRootPart")
-                if hrp then hrp.CFrame = CFrame.new(cp.pos + Vector3.new(0,3,0)) end
+                if hrp then hrp.CFrame = CFrame.new(cp.pos+Vector3.new(0,3,0)) end
                 local pct = i/total
-                tween(obbyFill, {Size=UDim2.new(pct,0,1,0)}, STEP_DELAY*0.8)
-                obbyStepLbl.Text = "Checkpoint "..cp.name.." / "..total
-                obbyPctLbl.Text  = math.floor(pct*100).."%"
-                task.wait(STEP_DELAY)
+                TS:Create(obbyFill, TweenInfo.new(OBBY_DELAY*0.8),
+                    {Size=UDim2.new(pct,0,1,0)}):Play()
+                obbyStep.Text = "Checkpoint "..i.." / "..total.."  ["..cp.name.."]"
+                obbyPct.Text  = math.floor(pct*100).."%"
+                task.wait(OBBY_DELAY)
             end
-
             if obbyFarming then
-                obbyFill.Size    = UDim2.new(1,0,1,0)
-                obbyStepLbl.Text = "Waiting for reset..."
-                obbyPctLbl.Text  = "done"
+                obbyFill.Size  = UDim2.new(1,0,1,0)
+                obbyStep.Text  = "Waiting for reset..."
+                obbyPct.Text   = "done"
                 task.wait(LOOP_DELAY)
-                obbyFill.Size    = UDim2.new(0,0,1,0)
-                obbyPctLbl.Text  = "0%"
+                obbyFill.Size  = UDim2.new(0,0,1,0)
+                obbyPct.Text   = "0%"
             end
         end
     end)
 end
 
-obbyStartBtn.MouseButton1Click:Connect(function()
+obbyBtn2.MouseButton1Click:Connect(function()
     if obbyFarming then stopObby() else startObby() end
 end)
 
--- balance polling
+-- balance poll
 task.spawn(function()
-    while gui.Parent do updateBalance() task.wait(3) end
+    while gui.Parent do updateBal() task.wait(3) end
 end)
 
-addLog(caseLog, "Ready. Group case: Glock18 Shinobu $5.12", C.accent)
-addLog(obbyLog2, "Ready. 15 checkpoints, "..STEP_DELAY.."s delay", C.accent)
+logLine(caseLog, "Ready. Keep threshold $"..KEEP_MIN, CYAN)
+logLine(obbyLog, "Ready. "..#CHECKPOINTS.." checkpoints loaded", CYAN)
